@@ -1,0 +1,68 @@
+#!groovy
+
+@Library('jenkinslib')
+
+def tools = new org.devops.tools()
+
+ pipeline {
+    environment {
+		github_statuses_url = 'https://api.github.com/repos/pengfuji/test_for_ci/statuses'
+	}
+    agent {
+        node {
+            label "node-192.168.2.3"
+            customWorkspace "${env.JOB_NAME}/${env.BUILD_NUMBER}"
+        }
+    }
+    stages ('build test_2 get ip ') {
+        stage ('get ip') {
+            steps {
+               script {
+                   ip = sh( script: " ip a|grep ens33| grep inet | awk \'{print \$2}\'|cut -d\'/\' -f1 ", returnStdout: true).trim()
+                   mem = sh( script: " free -h | awk \'NR==2 {print \$2}\' ", returnStdout: true).trim()
+                   hostname = sh( script: "hostname", returnStdout: true).trim()
+                   system_info = sh( script: "uname -a", returnStdout: true).trim()
+                   
+                   echo "--------------------------------------------"
+                   echo ip
+                   echo hostname
+                   echo mem
+                   echo system_info
+                   echo "--------------------------------------------"
+                   tools.PrintMes("this is my lib !! ")
+               }
+            }
+            post {
+                success {
+                    build job: 'TEST_1', parameters: [
+                        string(name: 'ghprbPullId', value: "$ghprbPullId"),
+                        string(name: 'ghprbActualCommit', value: "$ghprbActualCommit")
+                    ]
+                }
+                failure {
+                    sh "can not call job TEST_1 !! please check !!"
+                }
+            }
+        }
+    }
+	post {
+        success {
+            echo "build and test2 check success !!!"
+            post_upload_result(STATE: 'success', DESCRIPTION: 'Passed', CONTEXT: 'TEST_2_SUCCESS')
+        }
+        failure {
+            echo "build and test2 check fail !!"
+            post_upload_result(STATE: 'failure', DESCRIPTION: 'Failed', CONTEXT: 'TEST_2_FAILURE')
+        }
+    }
+}
+
+
+def post_upload_result(Map params) {
+    String STATE = params.STATE
+    String DESCRIPTION = params.DESCRIPTION
+    String CONTEXT = params.CONTEXT
+    withCredentials([string(credentialsId: 'github_token', variable: 'GITHUB_API_TOKEN')]) {
+        sh "curl -X POST -H 'Authorization: token $GITHUB_API_TOKEN' -d '{ \"state\": \"$STATE\", \"context\": \"$CONTEXT\", \"description\": \"$DESCRIPTION\" }' '$github_statuses_url/$ghprbActualCommit'"
+    }
+}

@@ -1,3 +1,3 @@
 def call(){
-    printIn("hello") 
+    println("hello") 
 }
